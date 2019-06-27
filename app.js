@@ -4,12 +4,12 @@
         this.id = id;
         this.description = description;
         this.value = value;
-        this.percentage = p-1;
+        this.percentage = -1;
     };
     
     Expense.prototype.calculatePercentage = function(totalIncome) {
      if(totalIncome > 0) {
-      this.percentage = Math.round((this.value / this.totalIncome) * 100); // Now we have an integer percentage value. We used Math's method round to achieve this      
+      this.percentage = Math.round((this.value / totalIncome) * 100); // Now we have an integer percentage value. We used Math's method round to achieve this      
      } else {
       this.percentage = -1;
      }  
@@ -17,6 +17,8 @@
     Expense.prototype.getPercentage = function() {
      return this.percentage;
     };
+    
+    
     var Income = function(id, description, value) {
         this.id = id;
         this.description = description;
@@ -94,7 +96,7 @@
      },
      calculatePercentages: function() {
       data.allItems.exp.forEach(function(current){
-       current.calculatePercentage();
+       current.calculatePercentage(data.totals.inc);
        });
       },
       getPercentages: function() {
@@ -142,10 +144,42 @@
         incomeLabel: '.budget__income--value',
         expensesLabel: '.budget__expenses--value',
         percentageLabel: '.budget__expenses--percentage',
-        container: '.container'
+        container: '.container',
+        expensesPercLabel: '.item__percentage',
+        dateLabel: '.budget__title--month'
         
     };
-    return {
+    var formatNumber = function(num, type) {
+         var numSplit, integer, dec;
+         
+         /*
+          *Plus or minus before the number,
+          *exactly two decimal places
+          *and a comma seperating the number eg 10000.554 => +10,000.56
+          *The absolute method removes the sign of the number
+          */
+         num = Math.abs(num);
+         num = num.toFixed(2); // This is a method of the number prototype. Strings and numbers can have methods. JavaScript will conver them to an object
+         numSplit = num.split('.');
+         integer = numSplit[0];
+         dec = numSplit[1];
+         
+         if(integer.length > 3) {// int is a string, and like an array we have access to the length property. 
+          integer = integer.substr(0, integer.length - 3) + ',' + integer.substr(integer.length - 3, 3);
+          }
+         
+         
+         return (type === 'exp' ? '-' :  '+') + ' ' + integer + '.' + dec;
+         
+         
+    };
+    
+         var nodeListForEach = function(list, callback) {
+          for(i = 0; i < list.length; i++) { // Inside, we simply call our callback function
+           callback(list[i], i);
+          }
+         };
+      return {
         getInput: function() {
             return {
             type: document.querySelector(DOMStrings.inputType).value, // Will be either inc or exp
@@ -168,9 +202,21 @@
          // Replace placeholder text with some actual data
          newHtml = html.replace('%id%', obj.id);
          newHtml = newHtml.replace('%description%', obj.description);
-         newHtml = newHtml.replace('%value%', obj.value);
+         newHtml = newHtml.replace('%value%', formatNumber(obj.value, type));
          // Insert HTML into the DOM
          document.querySelector(element).insertAdjacentHTML('beforeend', newHtml);
+        },
+        changedType: function() {
+         // Here we want style manipulations, so we are going to add or remove a css class
+         var fields = document.querySelectorAll(
+          DOMStrings.inputType + ',' + // These three will receive the red focus class
+          DOMStrings.inputDescription + ',' +
+          DOMStrings.inputValue);
+           // This returns a node list so we cannot loop over using the forEach method. We can use the NodeListForEach function
+          nodeListForEach(fields, function(current){
+           current.classList.toggle('red-focus');
+           });
+          document.querySelector(DOMStrings.inputBtn).classList.toggle('red');
         },
         
         deleteListItem: function(selectorID) {// The argument we pass we pass will be the itemID from the Controller. Eg, income-0 or income-1
@@ -189,10 +235,13 @@
          fieldsArray[0].focus();
         },
         
+        
         displayBudget: function(obj) {
-         document.querySelector(DOMStrings.budgetLabel).textContent = obj.budget;
-         document.querySelector(DOMStrings.incomeLabel).textContent = obj.totalIncome;
-         document.querySelector(DOMStrings.expensesLabel).textContent = obj.totalExpenses;
+         var type;
+         obj.budget > 0 ? type = 'inc' : type = 'exp';
+         document.querySelector(DOMStrings.budgetLabel).textContent = formatNumber(obj.budget, type);
+         document.querySelector(DOMStrings.incomeLabel).textContent = formatNumber(obj.totalIncome, 'inc');
+         document.querySelector(DOMStrings.expensesLabel).textContent = formatNumber(obj.totalExpenses, 'exp');
          
          if(obj.percentage > 0) {
          document.querySelector(DOMStrings.percentageLabel).textContent = obj.percentage + '%';
@@ -200,7 +249,30 @@
          document.querySelector(DOMStrings.percentageLabel).textContent = '---';
         }
         },
+        
+        displayPercentages: function(percentages){ // the argument it receives is going to be an array
+         var fields = document.querySelectorAll(DOMStrings.expensesPercLabel); // This will return a node list
+         // We need to loop over all these node elements in our html, and change the text property.
 
+         nodeListForEach(fields, function(current, index) {
+          if(percentages[index] > 0) {
+           current.textContent = percentages[index] + '%';
+          } else {
+           current.textContent = '---';
+          }
+          });
+        },
+        displayMonth: function() {
+         var now, year, month, months;
+         now = new Date(); // Don't pass anything and it will return the date of today
+         // var christmas = new Date(25, 11, 2019); We use the 11th month because it is zero based.
+         month = now.getMonth();
+         months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+         year = now.getFullYear(); // Now we just need to display this on our web page
+         document.querySelector(DOMStrings.dateLabel).textContent = months[month] + ' ' + year;
+         // DONT FORGET TO CALL YOUR NEWLY CREATED METHODS
+        },
+ 
   
         getDOMStrings: function() {
             return DOMStrings;
@@ -231,6 +303,7 @@
     });
     
     document.querySelector(DOM.container).addEventListener('click', ctrlDeleteItem);
+    document.querySelector(DOM.inputType).addEventListener('change', UICtrl.changedType);
     };
     var updateBudget = function() {
      // Calculate the budget
@@ -248,7 +321,7 @@
        // 2. Read percentages from the budget controller
        var percentages = budgetController.getPercentages();
       // 3. Update the user interface with the new percentages
-      console.log(percentages);
+      UIController.displayPercentages(percentages); // Here we will call the UI method to update the budget.
      };
     var ctrlAddItem = function() {
         var input, newItem;
@@ -301,6 +374,7 @@
          totalExpenses: 0,
          percentage: -1});
          setupEventListeners();
+         UIController.displayMonth();
         }
     };
 
